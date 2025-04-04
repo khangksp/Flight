@@ -1,0 +1,112 @@
+services:
+  mysql-db:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: flightbooking
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./seed-data:/docker-entrypoint-initdb.d
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 100  # Tăng số lần thử lên 30 (tổng thời gian thử tối đa: 150 giây)
+      start_period: 60s  # Tăng thời gian chờ ban đầu lên 60 giây
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmqctl", "status"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  booking-service:
+    build: ./Booking-Service
+    environment:
+      - DB_HOST=mysql-db
+      - DB_PORT=3306
+      - DB_USER=root
+      - DB_PASSWORD=root
+      - DB_NAME=flightbooking
+      - PORT=5000
+      - FLIGHT_SERVICE=http://flights-service:5000
+      - BOOKING_SERVICE=http://booking-service:5000
+    depends_on:
+      mysql-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    ports:
+      - "5001:5000"
+
+  flights-service:
+    build: ./Flights-Service
+    environment:
+      - DB_HOST=mysql-db
+      - DB_PORT=3306
+      - DB_USER=root
+      - DB_PASSWORD=root
+      - DB_NAME=flightbooking
+      - PORT=5000
+      - FLIGHT_SERVICE=http://flights-service:5000
+      - BOOKING_SERVICE=http://booking-service:5000
+    depends_on:
+      mysql-db:
+        condition: service_healthy
+    ports:
+      - "5002:5000"
+
+  notification-service:
+    build: ./Notification-Service
+    environment:
+      - DB_HOST=mysql-db
+      - DB_PORT=3306
+      - DB_USER=root
+      - DB_PASSWORD=root
+      - DB_NAME=flightbooking
+      - PORT=5000
+      - FLIGHT_SERVICE=http://flights-service:5000
+      - BOOKING_SERVICE=http://booking-service:5000
+      - GMAIL_ID=khangksp@gmail.com
+      - GMAIL_PASSWORD=jjde ygez hmpe wyal
+    depends_on:
+      mysql-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    ports:
+      - "5003:5000"
+
+  api-gateway:
+    build: ./API_GATEWAY
+    environment:
+      - DB_HOST=mysql-db
+      - DB_PORT=3306
+      - DB_USER=root
+      - DB_PASSWORD=root
+      - DB_NAME=flightbooking
+      - PORT=5000
+      - FLIGHT_SERVICE=http://flights-service:5000
+      - BOOKING_SERVICE=http://booking-service:5000
+    depends_on:
+      mysql-db:
+        condition: service_healthy
+      booking-service:
+        condition: service_started
+      flights-service:
+        condition: service_started
+      notification-service:
+        condition: service_started
+    ports:
+      - "5000:5000"
+
+volumes:
+  mysql-data:
